@@ -1,0 +1,143 @@
+=head1 NAME
+
+tdsql - run SQL queries against a Teradata data warehouse server
+
+=head1 SYNOPSIS
+
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [sql] [args]
+
+=head1 DESCRIPTION
+
+This program runs an SQL query against the Teradata data warehouse, and
+then sends the output of the query either to stdout, or to an output
+file. The SQL can be provided on the command line, or to stdin. Database
+credentials can be provided on the command line, or in the
+initialization file F<~/.tdsqlrc>.
+
+=head2 Command-Line Options
+
+The following optional command-line arguments are accepted:
+
+=over 4
+
+=item C<-h>, C<--help>
+
+Display command line help and exit.
+
+=item C<-H> I<host>, C<--hostname=>I<host>
+
+Connect to this hostname (default localhost).
+
+=item C<-u> I<user>, C<--username=>I<user>
+
+Connect with this username (default your Unix username).
+
+=item C<-p> I<pass>, C<--password=>I<pass>
+
+Connect with this password (default is to prompt interactively for one).
+
+=item C<-o> I<file>, C<--output=>I<file>
+
+Write output to this file (default is to write to stdout).
+
+=item C<-f> I<format>, C<--format=>I<format>
+
+Write output in C<text> (tab-separated, the default), C<csv>
+(comma-separated), or C<box> pretty-printed boxed format (this is the
+slowest output format, as all output must be buffered before any output
+is printed).
+
+=back
+
+The last optional command line arguments are the SQL to run, as a single
+string; and any arguments to pass to the SQL, if the SQL contains
+question mark (C<?>) positional placeholders. The default is to prompt
+for SQL interactively using a command line prompt, if stdin is a tty, or
+read stdin as verbatim SQL, if stdin is not a tty.
+
+=head2 Initialization File
+
+This script looks for a file C<~/.tdsqlrc> which is a file in YAML format
+that has the following structure (all contents optional):
+
+  hostname: I<host>
+  username: I<user>
+  password: I<pass>
+
+If the file is present, then any provided values are used as the default
+values for hostname, username, and password. This means you can avoid
+needing to continually repeat these from the command line. Note that if
+you record your password here, you should make sure the file has safe
+permissions (C<chmod 600 ~/.tdsqlrc>).
+
+=head1 INSTALLATION
+
+You can install this software simply by moving the F<bin/tdsql> program
+into your PATH (for example, in F</usr/local/bin>), and the man page in
+F<share/man/man1/tdsql.1> into your MANPATH (for example, in
+F</usr/local/share/man/man1>).
+
+This software requires Perl (it is tested with Perl 5.12.3), and the
+following CPAN modules:
+
+=over 4
+
+=item DBI
+
+=item Term::ReadKey
+
+=item Term::ReadLine::Gnu
+
+=item Text::CSV_XS
+
+=back
+
+It also relies on the DBD::Teradata module available here:
+L<http://www.presicient.com/tdatdbd/>
+
+=head1 EXAMPLES
+
+  % tdsql -H td -u johndoe
+
+  % echo 'SELECT col1, col2 FROM db1.table1' | tdsql -H td -u johndoe
+
+  % tdsql -o output.txt 'SELECT col1, col2 FROM db1.table1'
+
+  % tdsql -f box 'SELECT col1, col2 FROM db1.table1 WHERE col1 = ?' 'val1'
+
+=head1 AUTHOR
+
+Andrew Ho E<lt>F<ho@groupon.com>E<gt>
+
+=head1 LICENSE
+
+  Copyright (c) 2012, Groupon, Inc.
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+
+  Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+
+  Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in the
+  documentation and/or other materials provided with the distribution.
+
+  Neither the name of GROUPON nor the names of its contributors may be
+  used to endorse or promote products derived from this software without
+  specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+

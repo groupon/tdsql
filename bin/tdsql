@@ -1,0 +1,678 @@
+#!/usr/local/bin/perl
+# ========================================================================
+
+=head1 NAME
+
+tdsql - run SQL queries against a Teradata data warehouse server
+
+=head1 SYNOPSIS
+
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [sql] [args]
+
+=head1 DESCRIPTION
+
+This program runs an SQL query against the Teradata data warehouse, and
+then sends the output of the query either to stdout, or to an output
+file. The SQL can be provided on the command line, or to stdin. Database
+credentials can be provided on the command line, or in the
+initialization file F<~/.tdsqlrc>.
+
+=head2 Command-Line Options
+
+The following optional command-line arguments are accepted:
+
+=over 4
+
+=item C<-h>, C<--help>
+
+Display command line help and exit.
+
+=item C<-H> I<host>, C<--hostname=>I<host>
+
+Connect to this hostname (default localhost).
+
+=item C<-u> I<user>, C<--username=>I<user>
+
+Connect with this username (default your Unix username).
+
+=item C<-p> I<pass>, C<--password=>I<pass>
+
+Connect with this password (default is to prompt interactively for one).
+
+=item C<-o> I<file>, C<--output=>I<file>
+
+Write output to this file (default is to write to stdout).
+
+=item C<-f> I<format>, C<--format=>I<format>
+
+Write output in C<text> (tab-separated, the default), C<csv>
+(comma-separated), or C<box> pretty-printed boxed format (this is the
+slowest output format, as all output must be buffered before any output
+is printed).
+
+=back
+
+The last optional command line arguments are the SQL to run, as a single
+string; and any arguments to pass to the SQL, if the SQL contains
+question mark (C<?>) positional placeholders. The default is to prompt
+for SQL interactively using a command line prompt, if stdin is a tty, or
+read stdin as verbatim SQL, if stdin is not a tty.
+
+=head2 Initialization File
+
+This script looks for a file C<~/.tdsqlrc> which is a file in YAML format
+that has the following structure (all contents optional):
+
+  hostname: I<host>
+  username: I<user>
+  password: I<pass>
+
+If the file is present, then any provided values are used as the default
+values for hostname, username, and password. This means you can avoid
+needing to continually repeat these from the command line. Note that if
+you record your password here, you should make sure the file has safe
+permissions (C<chmod 600 ~/.tdsqlrc>).
+
+=head1 INSTALLATION
+
+You can install this software simply by moving the F<bin/tdsql> program
+into your PATH (for example, in F</usr/local/bin>), and the man page in
+F<share/man/man1/tdsql.1> into your MANPATH (for example, in
+F</usr/local/share/man/man1>).
+
+This software requires Perl (it is tested with Perl 5.12.3), and the
+following CPAN modules:
+
+=over 4
+
+=item DBI
+
+=item Term::ReadKey
+
+=item Term::ReadLine::Gnu
+
+=item Text::CSV_XS
+
+=back
+
+It also relies on the DBD::Teradata module available here:
+L<http://www.presicient.com/tdatdbd/>
+
+=head1 EXAMPLES
+
+  % tdsql -H td -u johndoe
+
+  % echo 'SELECT col1, col2 FROM db1.table1' | tdsql -H td -u johndoe
+
+  % tdsql -o output.txt 'SELECT col1, col2 FROM db1.table1'
+
+  % tdsql -f box 'SELECT col1, col2 FROM db1.table1 WHERE col1 = ?' 'val1'
+
+=head1 AUTHOR
+
+Andrew Ho E<lt>F<ho@groupon.com>E<gt>
+
+=head1 LICENSE
+
+  Copyright (c) 2012, Groupon, Inc.
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+
+  Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+
+  Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in the
+  documentation and/or other materials provided with the distribution.
+
+  Neither the name of GROUPON nor the names of its contributors may be
+  used to endorse or promote products derived from this software without
+  specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=cut
+
+
+# ------------------------------------------------------------------------
+# Libraries and globals
+
+use File::Basename qw(basename);
+use Getopt::Long qw(GetOptions);
+use Term::ReadKey qw(ReadMode ReadLine);
+use Term::ReadLine ();
+use DBI ();
+use Text::CSV_XS ();
+
+use warnings;
+use strict;
+
+# Our name and usage message, for error reporting and command line help
+our $ME = basename $0;
+our $USAGE =
+  "$ME [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [sql] [args]\n";
+our $FULL_USAGE = $USAGE . <<'EndUsage';
+    -h, --help      display this help text and exit
+    -u, --hostname  connect to this hostname (default localhost)
+    -u, --username  connect as this username (default your Unix username)
+    -p, --password  connect with this password (default is to prompt)
+    -o, --output    write output to this file (default is write to stdout)
+    -f, --format    output format text, csv, or box (default tab-separated text)
+    sql             the SQL to run (default is to read from stdin)
+    args            if placeholders are used in SQL, the arguments to pass
+EndUsage
+
+# Globals which can be influenced by the user
+our($OPTIONS, $HOSTNAME, $USERNAME, $PASSWORD, $OUTPUT, $FORMAT, $SQL, @ARGS);
+$OPTIONS  = '';  # TODO: 'CHARSET=UTF8';
+$HOSTNAME = 'localhost';
+$USERNAME = getpwuid($>);
+$FORMAT   = undef;
+
+
+# ------------------------------------------------------------------------
+# Parse ~/.tdsqlrc, if it exists, and use it to set default values
+
+if(has_value($ENV{HOME})) {
+    my $rcfile = "$ENV{HOME}/.${ME}rc";
+    if(-f $rcfile) {
+        open my $fh, '<', $rcfile or die "$ME: could not open $rcfile: $!\n";
+        my %config;
+        while(<$fh>) {
+            s/^\s+//;
+            s/\s+$//;
+            next if /^$/ || /^#/;
+            if(/^(\w+)\s*:\s*(.+)$/) {
+                $config{$1} = $2;
+            } else {
+                die "$ME: invalid format on line $. of $rcfile: $_\n";
+            }
+        }
+        close $fh;
+        $HOSTNAME = $config{hostname} if has_value($config{hostname});
+        $USERNAME = $config{username} if has_value($config{username});
+        $PASSWORD = $config{password} if has_value($config{password});
+    }
+}
+
+
+# ------------------------------------------------------------------------
+# Parse command line arguments
+
+{
+    local $SIG{__WARN__} = sub {
+        my $errmsg = lcfirst join '', @_;
+        chomp $errmsg;
+        die "$ME: argument parsing error: $errmsg\n$USAGE";
+    };
+    my $help;
+    Getopt::Long::Configure('no_ignore_case');
+    GetOptions(
+       'h|help'       => \$help,
+       'H|hostname=s' => \$HOSTNAME,
+       'u|username=s' => \$USERNAME,
+       'p|password=s' => \$PASSWORD,
+       'o|output=s'   => \$OUTPUT,
+       'f|format=s'   => \$FORMAT,
+    );
+    if($help) {
+        print $FULL_USAGE;
+        exit 0;
+    }
+}
+($SQL, @ARGS) = @ARGV;
+
+# Set default value for format depending on interactive mode or not
+unless(has_value($FORMAT)) {
+    if(has_value($SQL) || !-t STDIN) {
+        $FORMAT = 'text';
+    } else {
+        $FORMAT = 'box';
+    }
+}
+unless($FORMAT =~ /^(?:text|csv|box)$/) {
+    die "$ME: invalid format (valid formats are text, csv, box): $FORMAT\n";
+}
+
+# Prompt user for password, if password was not determined previously
+unless($PASSWORD) {
+    if(-t STDIN && -t STDERR) {
+        print STDERR 'Password: ';
+        ReadMode('noecho');
+        chomp($PASSWORD = ReadLine(0));
+        ReadMode('restore');
+        print STDERR "\n";
+    } else {
+        die "$ME: interactive password entry requires tty for stdin, stderr\n";
+    }
+}
+
+# If SQL was not supplied on command line, and stdin is not tty, slurp SQL
+if(!has_value($SQL) && !-t STDIN) {
+    local $/ = undef;
+    $SQL = <STDIN>;
+}
+
+
+# ------------------------------------------------------------------------
+# Execute query and output results
+
+# Connect to Teradata
+
+my $db = TDSQL->new($HOSTNAME, $USERNAME, $PASSWORD);
+   $db->output($OUTPUT) if has_value($OUTPUT);
+   $db->format($FORMAT) if has_value($FORMAT);
+if($SQL) {
+    eval { $db->run_query($SQL) };
+    if(my $errstr = $@) {
+        $db->finish;
+        chomp $errstr;
+        die "$ME: $errstr\n";
+    }
+} else {
+    my $runner = TDSQL::Runner->new($db);
+    my $term = Term::ReadLine->new($ME);
+       $term->MinLine(undef);
+    my $history_file;
+       $history_file = "$ENV{HOME}/.${ME}_history" if has_value($ENV{HOME});
+    $term->ReadHistory($history_file) if $term->can('ReadHistory') &&
+        has_value($history_file) && -f $history_file;
+    my $ps1 = "$ME> ";
+    my $ps2 = (' ' x (length($ME) - 1)) . '-> ';
+    my $history_lines = 0;
+    my $command;
+    while(defined($command = $term->readline($ps1))) {
+        while( $command !~ m,\A\s*/, && $command !~ m,;\s*\Z, &&
+               defined(my $partial = $term->readline($ps2)) )
+        {
+            $command .= ' ' unless $partial =~ /\A\s/;
+            $command .= $partial;
+        }
+        $term->AddHistory($command);
+        $history_lines++;
+        $command =~ s/;\s*\Z//;
+        my $should_continue = eval { $runner->parse($command) };
+        if($@ && has_value($DBI::errstr) && $@ =~ /\A\Q$DBI::errstr\E/) {
+            local $_ = $DBI::errstr;
+            if(/^Failure (?:\d\d\d\d): /) {
+                print STDERR "Error: $DBI::errstr\n\n";
+                $should_continue = 1;
+            } else {
+                die "$ME: error: $DBI::errstr\n";
+            }
+        } elsif($@) {
+            die "$ME: $@\n";
+        }
+        last unless $should_continue;
+    }
+    print STDERR "\n" if !defined($command);
+    $term->WriteHistory($history_file) if $term->can('WriteHistory') &&
+        has_value($history_file);
+}
+$db->finish;
+
+exit 0;
+
+
+# ========================================================================
+# Internal utility functions
+
+# True if input is defined and is not the empty string, false otherwise
+sub has_value {
+    return 1 if defined($_[0]) && $_[0] ne '';
+    return;
+}
+
+
+# ========================================================================
+# Encapsulate Teradata database connection
+
+package TDSQL;
+
+use Time::HiRes qw(gettimeofday tv_interval);
+
+use constant OPTIONS => ();
+
+sub new {
+    my($class, $hostname, $username, $password, $database) = @_;
+    my $dsn = join ';', "dbi:Teradata:$HOSTNAME", OPTIONS;
+    my $attr = { PrintError => 0, RaiseError => 0 };
+    my $self = {
+        dbh      => undef,
+        dbi_args => [ $dsn, $username, $password, $attr ],
+        output   => undef,
+        format   => undef,
+    };
+    bless $self, $class;
+    $self->connect;
+    return $self;
+}
+
+sub connect {
+    my $self = shift;
+    my $dbi_args = $self->{dbi_args};
+    my $dbh = DBI->connect(@$dbi_args)
+        || die "$ME: could not connect to Teradata: $DBI::errstr\n";
+    $self->{dbh} = $dbh;
+}
+
+sub output {
+    my($self, $output) = @_;
+    if(defined($output) && $output ne '') {
+        $self->{output} = $output;
+    }
+    return unless $self->{output};
+    return $self->{output};
+}
+
+sub close {
+    my $self = shift;
+    $self->{output} = undef;
+    return;
+}
+
+sub format {
+    my($self, $format) = @_;
+    if(defined($format) && $format ne '') {
+        $self->{format} = $format;
+    }
+    return unless $self->{format};
+    return $self->{format};
+}
+
+sub run_query {
+    my($self, $sql, @args) = @_;
+
+    # Keep track of row count and start time, for human output
+    my $rows = 0;
+    my $begin = [ gettimeofday() ];
+
+    # Prepare SQL query
+    my $dbh = $self->{dbh};
+    unless($dbh->ping) {
+        print STDERR "Warning: reconnecting to Teradata...\n";
+        $self->connect;
+    }
+    my $sth = $dbh->prepare($sql) || die $DBI::errstr;
+
+    # Run query and feed to outputter class
+    my $output = $self->{output};
+    my $format = $self->{format} || 'text';
+    my $out = TDSQL::Outputter::text->new($output, $format);
+    $sth->execute(@ARGS) || die $DBI::errstr;
+    my $started = 0;
+    while(my $row = $sth->fetchrow_arrayref) {
+        unless($started) {
+            $out->start($sth->{NAME});
+            $started = 1;
+        }
+        $out->output($row);
+        $rows++;
+    }
+    $out->finish;
+    $sth->finish;
+
+    # Show human row count and elapsed time to stderr
+    if(-t STDERR) {
+        my $elapsed = sprintf '%0.1f', tv_interval($begin);
+        printf STDERR "Returned %s row%s in %s second%s\n",
+            commify($rows), $rows == 1 ? '' : 's',
+            $elapsed, $elapsed eq '1.0' ? '' : 's';
+    }
+};
+
+sub finish {
+    my $self = shift;
+    $self->{dbh}->disconnect if $self->{dbh};
+}
+
+# Add American style commas to non-negative integer (12345 becomes 12,345)
+sub commify {
+    my $text = reverse $_[0];
+    $text =~ s/(\d\d\d)(?=\d)(?!\d*\.)/$1,/g;
+    return scalar reverse $text;
+}
+
+
+# ========================================================================
+# Interactive command line runner
+
+package TDSQL::Runner;
+
+use constant INTERACTIVE_BANNER => <<'EndBanner';
+Welcome to tdsql, an iteractive Teradata SQL interface.
+
+Type /help for help, or /exit to exit.
+EndBanner
+
+use constant INTERACTIVE_HELP => <<'EndHelp';
+List of tdsql interactive mode commands:
+
+    /help             display this help text
+    /output [file]    show or set the output file (default stdout)
+    /close            close any current output file, direct output to stdout
+    /format [format]  show or set output format (text, csv, box; default box)
+    /exit             exit tdsql interactive mode
+EndHelp
+
+sub new {
+    my($class, $db) = @_;
+    my $self = {
+        db => $db,
+    };
+    bless $self, $class;
+    print STDERR INTERACTIVE_BANNER, "\n";
+    return $self;
+}
+
+sub parse {
+    my($self, $command) = @_;
+    return unless defined $command;
+    $command =~ s/^\s+//;
+    $command =~ s/\s+$//;
+    $command =~ s/;+$//;
+    return 1 unless $command =~ /\S/;
+    if($command =~ s,^/,,) {
+        my($verb, @args) = split /\s+/, $command;
+        $verb = lc $verb;
+        if($verb =~ /^(?:h(?:elp)?|\?)\b/) {
+            print STDERR INTERACTIVE_HELP;
+        } elsif($verb eq 'output') {
+            if(@args && has_value($args[0])) {
+                my $output = shift @args;
+                print STDERR "Sending output to file: $output\n";
+                $db->output($output);
+            } else {
+                my $output = $db->output;
+                my $place = defined($output) ? "file: $output" : 'stdout';
+                print STDERR "Output is currently being sent to $place.\n";
+            }
+        } elsif($verb eq 'close') {
+            print STDERR "Sending output to stdout\n";
+            $db->close;
+        } elsif($verb eq 'format') {
+            if(@args && has_value($args[0])) {
+                my $format = shift @args;
+                if(TDSQL::Outputter->can_format($format)) {
+                    print STDERR "Setting format to: $format\n";
+                    $db->format($format);
+                } else {
+                    print STDERR "Error: unknown format: $format\n";
+                }
+            } else {
+                my $format = $db->format;
+                print STDERR "Output format is currently set to $format.\n";
+            }
+        } elsif($verb =~ /^(?:quit|exit)$/) {
+            return;
+        } else {
+            print STDERR "Error: unknown command: $verb\n";
+        }
+    } else {
+        $db->run_query($command);
+    }
+    print STDERR "\n";
+    return 1;
+}
+
+# True if input is defined and is not the empty string, false otherwise
+sub has_value {
+    return 1 if defined($_[0]) && $_[0] ne '';
+    return;
+}
+
+
+# ========================================================================
+# Outputter class factory and superclass
+
+package TDSQL::Outputter;
+use Carp qw(confess);
+
+# Constructor opens output file, if any, and then dispatches to subclass
+sub new {
+    my($class, $filename, $format) = @_;
+    my $self = {};
+    if($format =~ /^(?:text|csv|box)$/) {
+        bless $self, 'TDSQL::Outputter::' . $format;
+    } else {
+        confess("unknown output format: $format");
+    }
+    if(defined($filename) && $filename !~ /^\-?$/) {
+        open my $fh, '>:encoding(utf8)', $filename or
+            die "could not open $filename for writing: $!\n";
+        $self->{fh} = $fh;
+        $self->{should_close} = 1;
+    } else {
+        binmode(STDOUT, ':utf8');
+        $self->{fh} = \*STDOUT;
+        $self->{should_close} = 0;
+    }
+    return $self;
+}
+
+sub can_format {
+    my($class, $format) = @_;
+    return 1 if $format && $format =~ /^(?:text|csv|box)/;
+    return;
+}
+
+sub start {
+    1;  # default base method does nothing
+}
+
+sub output {
+    confess 'virtual base class output() should never be called';
+}
+
+# Manually called clean-up task (closes any self-opened file)
+sub finish {
+    my $self = shift;
+    close $self->{fh} if $self->{fh} && $self->{should_close};
+}
+
+
+# ------------------------------------------------------------------------
+# Delimited text outputter class
+
+package TDSQL::Outputter::delimited;
+use base qw(TDSQL::Outputter);
+use Carp qw(confess);
+
+sub delimiter {
+    confess 'virtual base class delimiter() should never be called';
+}
+
+sub start {
+    my($self, $header_row) = @_;
+    $self->{csv} = Text::CSV_XS->new( {
+        sep_char            => $self->delimiter,
+        eol                 => "\n",
+        binary              => 1,
+        quote_space         => 0,
+        quote_null          => 0,
+        allow_loose_quotes  => 1,
+        allow_loose_escapes => 1,
+        allow_whitespace    => 1,
+    } );
+}
+
+sub output {
+    my($self, $row) = @_;
+    $self->{csv}->print($self->{fh}, $row);
+}
+
+
+# Subclasses handle tab-separated (text) and comma-separated (csv) output
+
+package TDSQL::Outputter::text;
+use base qw(TDSQL::Outputter::delimited);
+sub delimiter { "\t" }
+
+package TDSQL::Outputter::csv;
+use base qw(TDSQL::Outputter::delimited);
+sub delimiter { ',' }
+
+
+# ------------------------------------------------------------------------
+# Pretty-printed box outputter class
+
+package TDSQL::Outputter::box;
+use base qw(TDSQL::Outputter);
+
+sub start {
+    my($self, $header_row) = @_;
+    $self->{rows}   = [ [ @$header_row ] ];
+    $self->{maxlen} = [ map { defined($_) ? length($_) : 0 } @{$header_row} ];
+}
+
+# Accumulate output in memory, and record each column's maximum length
+sub output {
+    my($self, $row) = @_;
+    my $maxlen = $self->{maxlen};
+    foreach my $i (0 .. $#$row) {
+        my $len = defined($row->[$i]) ? length($row->[$i]) : 0;
+        if(!defined($maxlen->[$i]) || $len > $maxlen->[$i]) {
+            $maxlen->[$i] = $len;
+        }
+    }
+    push @{$self->{rows}}, [@$row];
+}
+
+sub finish {
+    my $self = shift;
+    if($self->{rows} && @{$self->{rows}}) {
+        my $head_inside = join '-+-', map {  '-' x $_  } @{$self->{maxlen}};
+        my $body_inside = join ' | ', map { "\%-${_}s" } @{$self->{maxlen}};
+        my $head        = join $head_inside, '+-', "-+\n";
+        my $body_format = join $body_inside, '| ', " |\n";
+        my $fh = $self->{fh};
+        print $fh $head;
+        my $header_printed = 0;
+        foreach my $row (@{$self->{rows}}) {
+            printf $fh $body_format, map { defined($_) ? $_ : '' } @$row;
+            unless($header_printed) {
+                print $fh $head;
+                $header_printed = 1;
+            }
+        }
+        print $fh $head;
+    }
+    $self->SUPER::finish;
+}
+
+
+# ========================================================================
+__END__
