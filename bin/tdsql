@@ -91,13 +91,21 @@ following CPAN modules:
 
 =over 4
 
-=item DBI
+=item *
 
-=item Term::ReadKey
+DBI
 
-=item Term::ReadLine::Gnu
+=item *
 
-=item Text::CSV_XS
+Term::ReadKey
+
+=item *
+
+Term::ReadLine::Gnu
+
+=item *
+
+Text::CSV_XS
 
 =back
 
