@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "TDSQL 1"
-.TH TDSQL 1 "2012-07-30" "perl v5.12.3" "User Contributed Perl Documentation"
+.TH TDSQL 1 "2012-08-02" "perl v5.12.3" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -138,11 +138,17 @@ tdsql \- run SQL queries against a Teradata data warehouse server
 .Ve
 .SH "DESCRIPTION"
 .IX Header "DESCRIPTION"
+Teradata ships with very little Unix command line support other than the
+\&\s-1BTEQ\s0 tool. In particular, it lacks an interactive command prompt tool
+(like mysql for MySQL, psql for PostgreSQL, or vsql for Vertica). The
+tdsql program aims to fill that gap.
+.PP
 This program runs an \s-1SQL\s0 query against the Teradata data warehouse, and
 then sends the output of the query either to stdout, or to an output
-file. The \s-1SQL\s0 can be provided on the command line, or to stdin. Database
-credentials can be provided on the command line, or in the
-initialization file \fI~/.tdsqlrc\fR.
+file. The \s-1SQL\s0 can be provided on the command line, to stdin, or
+interactively via a command prompt that supports readline command line
+editing. Database credentials can be provided on the command line, or in
+the initialization file \fI~/.tdsqlrc\fR.
 .SS "Command-Line Options"
 .IX Subsection "Command-Line Options"
 The following optional command-line arguments are accepted:
@@ -228,9 +234,24 @@ It also relies on the DBD::Teradata module available here:
 \&
 \&  % tdsql \-f box \*(AqSELECT col1, col2 FROM db1.table1 WHERE col1 = ?\*(Aq \*(Aqval1\*(Aq
 .Ve
+.SH "TODO"
+.IX Header "TODO"
+.IP "\(bu" 4
+Add MySQL \eG style line ending (/format vertical).
+.IP "\(bu" 4
+Box format should not need to buffer all rows before starting display.
+.IP "\(bu" 4
+Recover from database connection timeouts.
+.IP "\(bu" 4
+Basic interaction should still work even without Term::ReadLine::Gnu.
+.IP "\(bu" 4
+Fall back to using stty if Term::ReadKey is not installed.
 .SH "AUTHOR"
 .IX Header "AUTHOR"
 Andrew Ho <\fIho@groupon.com\fR>
+.SH "SEE ALSO"
+.IX Header "SEE ALSO"
+<https://github.com/groupon/tdsql>
 .SH "LICENSE"
 .IX Header "LICENSE"
 .Vb 2

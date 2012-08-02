@@ -8,11 +8,17 @@ tdsql - run SQL queries against a Teradata data warehouse server
 
 =head1 DESCRIPTION
 
+Teradata ships with very little Unix command line support other than the
+BTEQ tool. In particular, it lacks an interactive command prompt tool
+(like mysql for MySQL, psql for PostgreSQL, or vsql for Vertica). The
+tdsql program aims to fill that gap.
+
 This program runs an SQL query against the Teradata data warehouse, and
 then sends the output of the query either to stdout, or to an output
-file. The SQL can be provided on the command line, or to stdin. Database
-credentials can be provided on the command line, or in the
-initialization file F<~/.tdsqlrc>.
+file. The SQL can be provided on the command line, to stdin, or
+interactively via a command prompt that supports readline command line
+editing. Database credentials can be provided on the command line, or in
+the initialization file F<~/.tdsqlrc>.
 
 =head2 Command-Line Options
 
@@ -105,9 +111,39 @@ L<http://www.presicient.com/tdatdbd/>
 
   % tdsql -f box 'SELECT col1, col2 FROM db1.table1 WHERE col1 = ?' 'val1'
 
+=head1 TODO
+
+=over 4
+
+=item *
+
+Add MySQL \G style line ending (/format vertical).
+
+=item *
+
+Box format should not need to buffer all rows before starting display.
+
+=item *
+
+Recover from database connection timeouts.
+
+=item *
+
+Basic interaction should still work even without Term::ReadLine::Gnu.
+
+=item *
+
+Fall back to using stty if Term::ReadKey is not installed.
+
+=back
+
 =head1 AUTHOR
 
 Andrew Ho E<lt>F<ho@groupon.com>E<gt>
+
+=head1 SEE ALSO
+
+L<https://github.com/groupon/tdsql>
 
 =head1 LICENSE
 
