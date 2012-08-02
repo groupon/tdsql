@@ -109,6 +109,24 @@ Text::CSV_XS
 It also relies on the DBD::Teradata module available here:
 L<http://www.presicient.com/tdatdbd/>
 
+That module in turn has these dependencies:
+
+=over 4
+
+=item *
+
+Crypt:ECB
+
+=item *
+
+Crypt::Rijndael
+
+=item *
+
+Digest::SHA1
+
+=back
+
 =head1 EXAMPLES
 
   % tdsql -H td -u johndoe
