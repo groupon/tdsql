@@ -52,9 +52,9 @@ Write output to this file (default is to write to stdout).
 =item C<-f> I<format>, C<--format=>I<format>
 
 Write output in C<text> (tab-separated, the default), C<csv>
-(comma-separated), or C<box> pretty-printed boxed format (this is the
+(comma-separated), C<box> pretty-printed boxed format (this is the
 slowest output format, as all output must be buffered before any output
-is printed).
+is printed), or C<vertical> for vertical rows (like MySQL with \G).
 
 =back
 
@@ -146,10 +146,6 @@ Digest::SHA1
 
 =item *
 
-Add MySQL \G style line ending (/format vertical).
-
-=item *
-
 Box format should not need to buffer all rows before starting display.
 
 =item *
@@ -232,7 +228,7 @@ our $FULL_USAGE = $USAGE . <<'EndUsage';
     -u, --username  connect as this username (default your Unix username)
     -p, --password  connect with this password (default is to prompt)
     -o, --output    write output to this file (default is write to stdout)
-    -f, --format    output format text, csv, or box (default tab-separated text)
+    -f, --format    format text, csv, box, vertical (default tab-separated text)
     sql             the SQL to run (default is to read from stdin)
     args            if placeholders are used in SQL, the arguments to pass
 EndUsage
@@ -305,8 +301,8 @@ unless(has_value($FORMAT)) {
         $FORMAT = 'box';
     }
 }
-unless($FORMAT =~ /^(?:text|csv|box)$/) {
-    die "$ME: invalid format (valid formats are text, csv, box): $FORMAT\n";
+unless($FORMAT =~ /^(?:text|csv|box|vertical)$/) {
+    die "$ME: invalid format (must be text, csv, box, or vertical): $FORMAT\n";
 }
 
 # Prompt user for password, if password was not determined previously
@@ -357,7 +353,7 @@ if($SQL) {
     my $history_lines = 0;
     my $command;
     while(defined($command = $term->readline($ps1))) {
-        while( $command !~ m,\A\s*/, && $command !~ m,;\s*\Z, &&
+        while( $command !~ m,\A\s*/, && $command !~ m,(?:;|\\[Gg])\s*\Z, &&
                defined(my $partial = $term->readline($ps2)) )
         {
             $command .= ' ' unless $partial =~ /\A\s/;
@@ -526,7 +522,7 @@ List of tdsql interactive mode commands:
     /help             display this help text
     /output [file]    show or set the output file (default stdout)
     /close            close any current output file, direct output to stdout
-    /format [format]  show or set output format (text, csv, box; default box)
+    /format [format]  show or set format (text, csv, box, vertical; default box)
     /exit             exit tdsql interactive mode
 EndHelp
 
@@ -545,7 +541,8 @@ sub parse {
     return unless defined $command;
     $command =~ s/^\s+//;
     $command =~ s/\s+$//;
-    $command =~ s/;+$//;
+    $command =~ s/(;|\\[gG])+$//;
+    my $term = $1;
     return 1 unless $command =~ /\S/;
     if($command =~ s,^/,,) {
         my($verb, @args) = split /\s+/, $command;
@@ -584,7 +581,13 @@ sub parse {
             print STDERR "Error: unknown command: $verb\n";
         }
     } else {
+        my $orig_format;
+        if(defined($term) && $term eq '\G') {
+            $orig_format = $db->format;
+            $db->format('vertical');
+        }
         $db->run_query($command);
+        $db->format($orig_format) if defined $orig_format;
     }
     print STDERR "\n";
     return 1;
@@ -607,7 +610,7 @@ use Carp qw(confess);
 sub new {
     my($class, $filename, $format) = @_;
     my $self = {};
-    if($format =~ /^(?:text|csv|box)$/) {
+    if($format =~ /^(?:text|csv|box|vertical)$/) {
         bless $self, 'TDSQL::Outputter::' . $format;
     } else {
         confess("unknown output format: $format");
@@ -627,7 +630,7 @@ sub new {
 
 sub can_format {
     my($class, $format) = @_;
-    return 1 if $format && $format =~ /^(?:text|csv|box)/;
+    return 1 if $format && $format =~ /^(?:text|csv|box|vertical)/;
     return;
 }
 
@@ -733,6 +736,38 @@ sub finish {
         print $fh $head;
     }
     $self->SUPER::finish;
+}
+
+
+# ------------------------------------------------------------------------
+# Display results vertically (MySQL \G command ending style)
+
+package TDSQL::Outputter::vertical;
+use base qw(TDSQL::Outputter);
+
+sub start {
+    my($self, $header_row) = @_;
+    my $maxlen = 0;
+    foreach(@$header_row) {
+        if(defined $_) {
+            my $len = length $_;
+            $maxlen = $len if $len > $maxlen;
+        }
+    }
+    $self->{labels} = [ @$header_row ];
+    $self->{format} = "\%${maxlen}s: %s\n";
+    $self->{rownum} = 1;
+}
+
+sub output {
+    my($self, $row) = @_;
+    printf "*************************** %d. row ***************************\n",
+           $self->{rownum};
+    foreach my $i (0 .. $#$row) {
+        printf $self->{format}, $self->{labels}->[$i],
+               defined($row->[$i]) ? $row->[$i] : 'NULL';
+    }
+    $self->{rownum}++;
 }
 
 

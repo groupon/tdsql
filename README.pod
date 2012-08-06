@@ -49,9 +49,9 @@ Write output to this file (default is to write to stdout).
 =item C<-f> I<format>, C<--format=>I<format>
 
 Write output in C<text> (tab-separated, the default), C<csv>
-(comma-separated), or C<box> pretty-printed boxed format (this is the
+(comma-separated), C<box> pretty-printed boxed format (this is the
 slowest output format, as all output must be buffered before any output
-is printed).
+is printed), or C<vertical> for vertical rows (like MySQL with \G).
 
 =back
 
@@ -140,10 +140,6 @@ Digest::SHA1
 =head1 TODO
 
 =over 4
-
-=item *
-
-Add MySQL \G style line ending (/format vertical).
 
 =item *
 
