@@ -523,8 +523,35 @@ List of tdsql interactive mode commands:
     /output [file]    show or set the output file (default stdout)
     /close            close any current output file, direct output to stdout
     /format [format]  show or set format (text, csv, box, vertical; default box)
+    /cheatsheet       view a cheatsheet of common commands
     /exit             exit tdsql interactive mode
 EndHelp
+
+use constant CHEATSHEET => <<'EndCheatsheet';
+Common Teradata commands:
+
+List databases
+    select databasename from dbc.databases order by databasename;
+
+Describe things
+    help database dbc;              /* a database */;
+    help table dbc.databases;       /* a table */;
+    show view [database].[table];   /* a view */;
+
+Change a password
+    modify user [username] as password = newpassword;
+
+Switch to a database
+    database [database_name];
+
+Example queries
+    select top [count] * from [table]; /* limit the number of results returned */
+    select * from [table] \G;          /* show results in column format */;
+
+Optimizing
+    explain [sql statement];
+    collect statistics on [tablename] column ([columnname]);
+EndCheatsheet
 
 sub new {
     my($class, $db) = @_;
@@ -575,6 +602,8 @@ sub parse {
                 my $format = $db->format;
                 print STDERR "Output format is currently set to $format.\n";
             }
+        } elsif($verb eq 'cheatsheet') {
+            print STDERR CHEATSHEET;
         } elsif($verb =~ /^(?:quit|exit)$/) {
             return;
         } else {
