@@ -7,7 +7,7 @@ tdsql - run SQL queries against a Teradata data warehouse server
 
 =head1 SYNOPSIS
 
-  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [sql] [args]
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]
 
 =head1 DESCRIPTION
 
@@ -55,6 +55,11 @@ Write output in C<text> (tab-separated, the default), C<csv>
 (comma-separated), C<box> pretty-printed boxed format (this is the
 slowest output format, as all output must be buffered before any output
 is printed), or C<vertical> for vertical rows (like MySQL with \G).
+
+=item C<-r>, C<--header>
+
+Include a header row with text or csv output. If a format other than
+text or csv is specified, the header argument is ignored. 
 
 =back
 
@@ -221,25 +226,26 @@ use strict;
 # Our name and usage message, for error reporting and command line help
 our $ME = basename $0;
 our $USAGE =
-  "$ME [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [sql] [args]\n";
+  "$ME [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]\n";
 our $FULL_USAGE = $USAGE . <<'EndUsage';
     -h, --help      display this help text and exit
-    -u, --hostname  connect to this hostname (default localhost)
+    -H, --hostname  connect to this hostname (default localhost)
     -u, --username  connect as this username (default your Unix username)
     -p, --password  connect with this password (default is to prompt)
     -o, --output    write output to this file (default is write to stdout)
     -f, --format    format text, csv, box, vertical (default tab-separated text)
+    -r, --header    include a header row with text or csv output
     sql             the SQL to run (default is to read from stdin)
     args            if placeholders are used in SQL, the arguments to pass
 EndUsage
 
 # Globals which can be influenced by the user
-our($OPTIONS, $HOSTNAME, $USERNAME, $PASSWORD, $OUTPUT, $FORMAT, $SQL, @ARGS);
+our($OPTIONS, $HOSTNAME, $USERNAME, $PASSWORD, $OUTPUT, $FORMAT, $HEADER, $SQL, @ARGS);
 $OPTIONS  = '';  # TODO: 'CHARSET=UTF8';
 $HOSTNAME = 'localhost';
 $USERNAME = getpwuid($>);
 $FORMAT   = undef;
-
+$HEADER   = undef;
 
 # ------------------------------------------------------------------------
 # Parse ~/.tdsqlrc, if it exists, and use it to set default values
@@ -285,6 +291,7 @@ if(has_value($ENV{HOME})) {
        'p|password=s' => \$PASSWORD,
        'o|output=s'   => \$OUTPUT,
        'f|format=s'   => \$FORMAT,
+       'r|header'     => \$HEADER,
     );
     if($help) {
         print $FULL_USAGE;
@@ -303,6 +310,13 @@ unless(has_value($FORMAT)) {
 }
 unless($FORMAT =~ /^(?:text|csv|box|vertical)$/) {
     die "$ME: invalid format (must be text, csv, box, or vertical): $FORMAT\n";
+}
+if($HEADER) {
+    if($FORMAT eq 'text') {
+        $FORMAT = 'htext';
+    } elsif ($FORMAT eq 'csv') {
+        $FORMAT = 'hcsv';
+    }
 }
 
 # Prompt user for password, if password was not determined previously
@@ -639,7 +653,7 @@ use Carp qw(confess);
 sub new {
     my($class, $filename, $format) = @_;
     my $self = {};
-    if($format =~ /^(?:text|csv|box|vertical)$/) {
+    if($format =~ /^(?:text|csv|htext|hcsv|box|vertical)$/) {
         bless $self, 'TDSQL::Outputter::' . $format;
     } else {
         confess("unknown output format: $format");
@@ -659,7 +673,7 @@ sub new {
 
 sub can_format {
     my($class, $format) = @_;
-    return 1 if $format && $format =~ /^(?:text|csv|box|vertical)/;
+    return 1 if $format && $format =~ /^(?:text|csv|htext|hcsv|box|vertical)/;
     return;
 }
 
@@ -689,6 +703,8 @@ sub delimiter {
     confess 'virtual base class delimiter() should never be called';
 }
 
+sub header { 0 } 
+
 sub start {
     my($self, $header_row) = @_;
     $self->{csv} = Text::CSV_XS->new( {
@@ -701,6 +717,9 @@ sub start {
         allow_loose_escapes => 1,
         allow_whitespace    => 1,
     } );
+    if ($self->header != 0) {
+       $self->{csv}->print($self->{fh}, $header_row);
+    }
 }
 
 sub output {
@@ -719,6 +738,15 @@ package TDSQL::Outputter::csv;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { ',' }
 
+package TDSQL::Outputter::htext;
+use base qw(TDSQL::Outputter::delimited);
+sub delimiter { "\t" }
+sub header { 1 }
+
+package TDSQL::Outputter::hcsv;
+use base qw(TDSQL::Outputter::delimited);
+sub delimiter { ',' }
+sub header { 1 } 
 
 # ------------------------------------------------------------------------
 # Pretty-printed box outputter class
