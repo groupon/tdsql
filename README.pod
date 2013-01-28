@@ -4,7 +4,7 @@ tdsql - run SQL queries against a Teradata data warehouse server
 
 =head1 SYNOPSIS
 
-  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [sql] [args]
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]
 
 =head1 DESCRIPTION
 
@@ -52,6 +52,11 @@ Write output in C<text> (tab-separated, the default), C<csv>
 (comma-separated), C<box> pretty-printed boxed format (this is the
 slowest output format, as all output must be buffered before any output
 is printed), or C<vertical> for vertical rows (like MySQL with \G).
+
+=item C<-r>, C<--header>
+
+Include a header row with text or csv output. If a format other than
+text or csv is specified, the header argument is ignored. 
 
 =back
 
