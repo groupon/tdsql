@@ -1,3 +1,4 @@
 .git* export-ignore
+LICENSE export-ignore
 Makefile export-ignore
 README.pod export-ignore
