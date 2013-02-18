@@ -544,27 +544,27 @@ EndHelp
 use constant CHEATSHEET => <<'EndCheatsheet';
 Common Teradata commands:
 
-List databases
+List databases:
     select databasename from dbc.databases order by databasename;
 
-Describe things
-    help database dbc;              /* a database */;
-    help table dbc.databases;       /* a table */;
-    show view [database].[table];   /* a view */;
+Describe things:
+    help database <database>;           /* database */
+    help table <database>.<table>;      /* table    */
+    show view <database>.<view>;        /* view     */
 
-Change a password
-    modify user [username] as password = newpassword;
+Change user password:
+    modify user <username> as password = newpassword;
 
-Switch to a database
-    database [database_name];
+Switch to a database:
+    database <database>;
 
-Example queries
-    select top [count] * from [table]; /* limit the number of results returned */
-    select * from [table] \G;          /* show results in column format */;
+Example queries:
+    select top [count] * from <table>;  /* limit number of results returned */
+    select * from <table> \G;           /* show results in column format    */
 
-Optimizing
-    explain [sql statement];
-    collect statistics on [tablename] column ([columnname]);
+Optimizing queries:
+    explain <sql>;
+    collect statistics on <table> column (<column>);
 EndCheatsheet
 
 sub new {
