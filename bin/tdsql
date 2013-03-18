@@ -219,6 +219,7 @@ use Term::ReadKey qw(ReadMode ReadLine);
 use Term::ReadLine ();
 use DBI ();
 use Text::CSV_XS ();
+use File::Temp;
 
 use warnings;
 use strict;
@@ -366,7 +367,9 @@ if($SQL) {
     my $ps2 = (' ' x (length($ME) - 1)) . '-> ';
     my $history_lines = 0;
     my $command;
-    while(defined($command = $term->readline($ps1))) {
+    my $preput = '';
+    while(defined($command = $term->readline($ps1, $preput))) {
+        $preput = '';
         while( $command !~ m,\A\s*/, && $command !~ m,(?:;|\\[Gg])\s*\Z, &&
                defined(my $partial = $term->readline($ps2)) )
         {
@@ -376,6 +379,23 @@ if($SQL) {
         $term->AddHistory($command);
         $history_lines++;
         $command =~ s/;\s*\Z//;
+
+        # have to put /edit parsing out here since it modifies $preput
+        if($command =~ /^\/e(?:dit)?$/i) {
+            my $sql_file =
+              File::Temp->new(
+                TEMPLATE => "$ME.XXXXX",
+                SUFFIX   => '.sql',
+                TMPDIR   => 1
+              );
+            print $sql_file (($term->GetHistory())[-2]);
+            close($sql_file);
+            system($ENV{VISUAL} || $ENV{EDITOR} || 'editor', $sql_file);
+            open(my $fh, '<', $sql_file);
+            chomp($preput = do { local $/; <$fh> });
+            close($fh);
+            next;
+        }
         my $should_continue = eval { $runner->parse($command) };
         if($@ && has_value($DBI::errstr) && $@ =~ /\A\Q$DBI::errstr\E/) {
             local $_ = $DBI::errstr;
@@ -538,6 +558,7 @@ List of tdsql interactive mode commands:
     /close            close any current output file, direct output to stdout
     /format [format]  show or set format (text, csv, box, vertical; default box)
     /cheatsheet       view a cheatsheet of common commands
+    /edit             edit the most recent command in your editor
     /exit             exit tdsql interactive mode
 EndHelp
 
