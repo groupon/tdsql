@@ -383,7 +383,11 @@ if($SQL) {
         # have to put this command parsing here since it operates on $term
         if($command =~ /^\/e(?:dit)?$/i) {
             my $sql_file =
-              File::Temp->new(TEMPLATE => "$ME.XXXXX", TMPDIR => 1);
+              File::Temp->new(
+                TEMPLATE => "$ME.XXXXX",
+                SUFFIX   => '.sql',
+                TMPDIR   => 1
+              );
             print $sql_file (($term->GetHistory())[-2]);
             close($sql_file);
             system($ENV{VISUAL} || $ENV{EDITOR} || 'editor', $sql_file);
