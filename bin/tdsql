@@ -380,7 +380,7 @@ if($SQL) {
         $history_lines++;
         $command =~ s/;\s*\Z//;
 
-        # have to put this command parsing here since it operates on $term
+        # have to put /edit parsing out here since it modifies $preput
         if($command =~ /^\/e(?:dit)?$/i) {
             my $sql_file =
               File::Temp->new(
