@@ -7,7 +7,7 @@ tdsql - run SQL queries against a Teradata data warehouse server
 
 =head1 SYNOPSIS
 
-  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [sql] [args]
 
 =head1 DESCRIPTION
 
@@ -45,6 +45,18 @@ Connect with this username (default your Unix username).
 
 Connect with this password (default is to prompt interactively for one).
 
+=item C<-d> I<database>, C<--database=>I<database>
+
+Connect initially to the given database (default is not in any database).
+
+=item C<-c> I<charset>, C<--charset=>I<charset>
+
+Specify character set; must be one of ASCII or UTF8
+
+=item C<-m> I<mode>, C<--mode=>I<mode>
+
+Specify mode; must be one of ANSI or TERADATA
+
 =item C<-o> I<file>, C<--output=>I<file>
 
 Write output to this file (default is to write to stdout).
@@ -77,9 +89,12 @@ that has the following structure (all contents optional):
   hostname: I<host>
   username: I<user>
   password: I<pass>
+  database: I<database>
+  charset:  I<charset>
+  mode:     I<mode>
 
 If the file is present, then any provided values are used as the default
-values for hostname, username, and password. This means you can avoid
+values for hostname, username, etc.  This means you can avoid
 needing to continually repeat these from the command line. Note that if
 you record your password here, you should make sure the file has safe
 permissions (C<chmod 600 ~/.tdsqlrc>).
@@ -227,12 +242,15 @@ use strict;
 # Our name and usage message, for error reporting and command line help
 our $ME = basename $0;
 our $USAGE =
-  "$ME [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]\n";
+  "$ME [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [sql] [args]\n";
 our $FULL_USAGE = $USAGE . <<'EndUsage';
     -h, --help      display this help text and exit
     -H, --hostname  connect to this hostname (default localhost)
     -u, --username  connect as this username (default your Unix username)
     -p, --password  connect with this password (default is to prompt)
+    -d, --database  start connected to a specific database
+    -c, --charset   must be one of ASCII or UTF8
+    -m, --mode      must be one of ANSI or TERADATA
     -o, --output    write output to this file (default is write to stdout)
     -f, --format    format text, csv, box, vertical (default tab-separated text)
     -r, --header    include a header row with text or csv output
@@ -241,8 +259,7 @@ our $FULL_USAGE = $USAGE . <<'EndUsage';
 EndUsage
 
 # Globals which can be influenced by the user
-our($OPTIONS, $HOSTNAME, $USERNAME, $PASSWORD, $OUTPUT, $FORMAT, $HEADER, $SQL, @ARGS);
-$OPTIONS  = '';  # TODO: 'CHARSET=UTF8';
+our($HOSTNAME, $USERNAME, $PASSWORD, $DATABASE, $CHARSET, $MODE, $OUTPUT, $FORMAT, $HEADER, $SQL, @ARGS);
 $HOSTNAME = 'localhost';
 $USERNAME = getpwuid($>);
 $FORMAT   = undef;
@@ -270,6 +287,9 @@ if(has_value($ENV{HOME})) {
         $HOSTNAME = $config{hostname} if has_value($config{hostname});
         $USERNAME = $config{username} if has_value($config{username});
         $PASSWORD = $config{password} if has_value($config{password});
+        $DATABASE = $config{database} if has_value($config{database});
+        $CHARSET  = $config{charset}  if has_value($config{charset});
+        $MODE     = $config{mode}     if has_value($config{mode});
     }
 }
 
@@ -290,6 +310,9 @@ if(has_value($ENV{HOME})) {
        'H|hostname=s' => \$HOSTNAME,
        'u|username=s' => \$USERNAME,
        'p|password=s' => \$PASSWORD,
+       'd|database=s' => \$DATABASE,
+       'c|charset=s'  => \$CHARSET,
+       'm|mode=s'     => \$MODE,
        'o|output=s'   => \$OUTPUT,
        'f|format=s'   => \$FORMAT,
        'r|header'     => \$HEADER,
@@ -312,6 +335,15 @@ unless(has_value($FORMAT)) {
 unless($FORMAT =~ /^(?:text|csv|box|vertical)$/) {
     die "$ME: invalid format (must be text, csv, box, or vertical): $FORMAT\n";
 }
+
+if(has_value($CHARSET) && $CHARSET !~ /^(?:ASCII|UTF8)$/) {
+    die "$ME: invalid charset (must be ASCII or UTF8): $CHARSET\n";
+}
+
+if(has_value($MODE) && $MODE !~ /^(?:ANSI|TERADATA)$/) {
+    die "$ME: invalid mode (must be ANSI or TERADATA): $MODE\n";
+}
+
 if($HEADER) {
     if($FORMAT eq 'text') {
         $FORMAT = 'htext';
@@ -436,11 +468,12 @@ package TDSQL;
 
 use Time::HiRes qw(gettimeofday tv_interval);
 
-use constant OPTIONS => ();
-
 sub new {
     my($class, $hostname, $username, $password, $database) = @_;
-    my $dsn = join ';', "dbi:Teradata:$HOSTNAME", OPTIONS;
+    my $dsn = "dbi:Teradata:$HOSTNAME";
+    $dsn .= ";DATABASE=$DATABASE" if ::has_value($DATABASE);
+    $dsn .= ";MODE=$MODE"         if ::has_value($MODE);
+    $dsn .= ";CHARSET=$CHARSET"   if ::has_value($CHARSET);
     my $attr = { PrintError => 0, RaiseError => 0 };
     my $self = {
         dbh      => undef,
