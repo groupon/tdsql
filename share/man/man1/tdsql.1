@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "TDSQL 1"
-.TH TDSQL 1 "2012-11-30" "perl v5.12.3" "User Contributed Perl Documentation"
+.TH TDSQL 1 "2013-03-21" "perl v5.12.3" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -134,7 +134,7 @@ tdsql \- run SQL queries against a Teradata data warehouse server
 .SH "SYNOPSIS"
 .IX Header "SYNOPSIS"
 .Vb 1
-\&  % tdsql [\-h] [\-H host] [\-u user] [\-p pass] [\-o file] [\-f format] [\-r] [sql] [args]
+\&  % tdsql [\-h] [\-H host] [\-u user] [\-p pass] [\-d database] [\-c charset] [\-m mode] [\-o file] [\-f format] [\-r] [sql] [args]
 .Ve
 .SH "DESCRIPTION"
 .IX Header "DESCRIPTION"
@@ -168,6 +168,18 @@ Connect with this username (default your Unix username).
 .el .IP "\f(CW\-p\fR \fIpass\fR, \f(CW\-\-password=\fR\fIpass\fR" 4
 .IX Item "-p pass, --password=pass"
 Connect with this password (default is to prompt interactively for one).
+.ie n .IP """\-d"" \fIdatabase\fR, ""\-\-database=""\fIdatabase\fR" 4
+.el .IP "\f(CW\-d\fR \fIdatabase\fR, \f(CW\-\-database=\fR\fIdatabase\fR" 4
+.IX Item "-d database, --database=database"
+Connect initially to the given database (default is not in any database).
+.ie n .IP """\-c"" \fIcharset\fR, ""\-\-charset=""\fIcharset\fR" 4
+.el .IP "\f(CW\-c\fR \fIcharset\fR, \f(CW\-\-charset=\fR\fIcharset\fR" 4
+.IX Item "-c charset, --charset=charset"
+Specify character set; must be one of \s-1ASCII\s0 or \s-1UTF8\s0
+.ie n .IP """\-m"" \fImode\fR, ""\-\-mode=""\fImode\fR" 4
+.el .IP "\f(CW\-m\fR \fImode\fR, \f(CW\-\-mode=\fR\fImode\fR" 4
+.IX Item "-m mode, --mode=mode"
+Specify mode; must be one of \s-1ANSI\s0 or \s-1TERADATA\s0
 .ie n .IP """\-o"" \fIfile\fR, ""\-\-output=""\fIfile\fR" 4
 .el .IP "\f(CW\-o\fR \fIfile\fR, \f(CW\-\-output=\fR\fIfile\fR" 4
 .IX Item "-o file, --output=file"
@@ -195,14 +207,17 @@ read stdin as verbatim \s-1SQL\s0, if stdin is not a tty.
 This script looks for a file \f(CW\*(C`~/.tdsqlrc\*(C'\fR which is a file in \s-1YAML\s0 format
 that has the following structure (all contents optional):
 .PP
-.Vb 3
+.Vb 6
 \&  hostname: I<host>
 \&  username: I<user>
 \&  password: I<pass>
+\&  database: I<database>
+\&  charset:  I<charset>
+\&  mode:     I<mode>
 .Ve
 .PP
 If the file is present, then any provided values are used as the default
-values for hostname, username, and password. This means you can avoid
+values for hostname, username, etc.  This means you can avoid
 needing to continually repeat these from the command line. Note that if
 you record your password here, you should make sure the file has safe
 permissions (\f(CW\*(C`chmod 600 ~/.tdsqlrc\*(C'\fR).
