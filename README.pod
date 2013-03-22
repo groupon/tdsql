@@ -4,7 +4,7 @@ tdsql - run SQL queries against a Teradata data warehouse server
 
 =head1 SYNOPSIS
 
-  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [sql] [args]
 
 =head1 DESCRIPTION
 
@@ -42,6 +42,18 @@ Connect with this username (default your Unix username).
 
 Connect with this password (default is to prompt interactively for one).
 
+=item C<-d> I<database>, C<--database=>I<database>
+
+Connect initially to the given database (default is not in any database).
+
+=item C<-c> I<charset>, C<--charset=>I<charset>
+
+Specify character set; must be one of ASCII or UTF8
+
+=item C<-m> I<mode>, C<--mode=>I<mode>
+
+Specify mode; must be one of ANSI or TERADATA
+
 =item C<-o> I<file>, C<--output=>I<file>
 
 Write output to this file (default is to write to stdout).
@@ -74,9 +86,12 @@ that has the following structure (all contents optional):
   hostname: I<host>
   username: I<user>
   password: I<pass>
+  database: I<database>
+  charset:  I<charset>
+  mode:     I<mode>
 
 If the file is present, then any provided values are used as the default
-values for hostname, username, and password. This means you can avoid
+values for hostname, username, etc.  This means you can avoid
 needing to continually repeat these from the command line. Note that if
 you record your password here, you should make sure the file has safe
 permissions (C<chmod 600 ~/.tdsqlrc>).
