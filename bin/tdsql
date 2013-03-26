@@ -819,9 +819,12 @@ sub output {
     my($self, $row) = @_;
     my $maxlen = $self->{maxlen};
     foreach my $i (0 .. $#$row) {
-        # get rid of carriage returns in box output to keep it readable
-        $row->[$i] =~ s/\r/\\r/g;
-        my $len = defined($row->[$i]) ? length($row->[$i]) : 0;
+        my $len = 0;
+        if (defined $row->[$i]) {
+            # get rid of carriage returns in box output to keep it readable
+            $row->[$i] =~ s/\r/\\r/g;
+            $len = length($row->[$i]);
+        }
         if(!defined($maxlen->[$i]) || $len > $maxlen->[$i]) {
             $maxlen->[$i] = $len;
         }
