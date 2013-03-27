@@ -431,8 +431,8 @@ if($SQL) {
         my $should_continue = eval { $runner->parse($command) };
         if($@ && has_value($DBI::errstr) && $@ =~ /\A\Q$DBI::errstr\E/) {
             local $_ = $DBI::errstr;
-            if(/^(?:Failure|Error) \d\d\d\d: /) {
-                print STDERR "$_\n\n";
+            if(/^Failure (?:\d\d\d\d): /) {
+                print STDERR "Error: $DBI::errstr\n\n";
                 $should_continue = 1;
             } else {
                 die "$ME: error: $DBI::errstr\n";
