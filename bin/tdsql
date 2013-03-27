@@ -821,8 +821,8 @@ sub output {
     foreach my $i (0 .. $#$row) {
         my $len = 0;
         if (defined $row->[$i]) {
-            # get rid of carriage returns in box output to keep it readable
-            $row->[$i] =~ s/\r/\\r/g;
+            # normalize to unix newlines
+            $row->[$i] =~ s/\r\n?/\n/g;
             $len = length($row->[$i]);
         }
         if(!defined($maxlen->[$i]) || $len > $maxlen->[$i]) {
