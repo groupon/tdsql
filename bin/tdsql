@@ -382,18 +382,14 @@ if($SQL) {
 
         # have to put /edit parsing out here since it modifies $preput
         if($command =~ /^\/e(?:dit)?$/i) {
-            my $sql_file =
-              File::Temp->new(
-                TEMPLATE => "$ME.XXXXX",
-                SUFFIX   => '.sql',
-                TMPDIR   => 1
-              );
-            print $sql_file (($term->GetHistory())[-2]);
-            close($sql_file);
-            system($ENV{VISUAL} || $ENV{EDITOR} || 'editor', $sql_file);
-            open(my $fh, '<', $sql_file);
-            chomp($preput = do { local $/; <$fh> });
-            close($fh);
+            if($term->Features->{preput}) {
+                $preput = edit_command($term);
+            } else {
+                print STDERR (
+                  "Your Term::ReadLine implementation does not ",
+                  "support preput.  Install Term::ReadLine::Gnu from CPAN.\n"
+                );
+            }
             next;
         }
         my $should_continue = eval { $runner->parse($command) };
@@ -428,6 +424,23 @@ sub has_value {
     return;
 }
 
+sub edit_command {
+    my ($term) = @_;
+    my $sql_file =
+      File::Temp->new(
+        TEMPLATE => "$ME.XXXXX",
+        SUFFIX   => '.sql',
+        TMPDIR   => 1
+      );
+    print $sql_file (($term->GetHistory())[-2]);
+    close($sql_file);
+    system($ENV{VISUAL} || $ENV{EDITOR} || 'editor', $sql_file);
+    open(my $fh, '<', $sql_file);
+    my $preput;
+    chomp($preput = do { local $/; <$fh> });
+    close($fh);
+    return $preput;
+}
 
 # ========================================================================
 # Encapsulate Teradata database connection
