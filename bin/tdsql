@@ -416,7 +416,7 @@ if($SQL) {
         $command =~ s/;\s*\Z//;
 
         # have to put /edit parsing out here since it modifies $preput
-        if($command =~ /^\/e(?:dit)?$|(.*)(\\e)\s*$/i) {
+        if($command =~ /^\/e(?:dit)?$|(.*)(\\e)\s*$/is) {
             my $sql = $2 ? $1 : ($term->GetHistory())[-2];
             if($term->Features->{preput}) {
                 $preput = edit_command($sql);
