@@ -7,7 +7,7 @@ tdsql - run SQL queries against a Teradata data warehouse server
 
 =head1 SYNOPSIS
 
-  % tdsql [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]
+  % tdsql [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [sql] [args]
 
 =head1 DESCRIPTION
 
@@ -45,6 +45,18 @@ Connect with this username (default your Unix username).
 
 Connect with this password (default is to prompt interactively for one).
 
+=item C<-d> I<database>, C<--database=>I<database>
+
+Connect initially to the given database (default is not in any database).
+
+=item C<-c> I<charset>, C<--charset=>I<charset>
+
+Specify character set; must be one of ASCII or UTF8
+
+=item C<-m> I<mode>, C<--mode=>I<mode>
+
+Specify mode; must be one of ANSI or TERADATA
+
 =item C<-o> I<file>, C<--output=>I<file>
 
 Write output to this file (default is to write to stdout).
@@ -78,9 +90,12 @@ that has the following structure (all contents optional):
   hostname: I<host>
   username: I<user>
   password: I<pass>
+  database: I<database>
+  charset:  I<charset>
+  mode:     I<mode>
 
 If the file is present, then any provided values are used as the default
-values for hostname, username, and password. This means you can avoid
+values for hostname, username, etc.  This means you can avoid
 needing to continually repeat these from the command line. Note that if
 you record your password here, you should make sure the file has safe
 permissions (C<chmod 600 ~/.tdsqlrc>).
@@ -220,6 +235,7 @@ use Term::ReadKey qw(ReadMode ReadLine);
 use Term::ReadLine ();
 use DBI ();
 use Text::CSV_XS ();
+use File::Temp;
 
 use warnings;
 use strict;
@@ -227,12 +243,15 @@ use strict;
 # Our name and usage message, for error reporting and command line help
 our $ME = basename $0;
 our $USAGE =
-  "$ME [-h] [-H host] [-u user] [-p pass] [-o file] [-f format] [-r] [sql] [args]\n";
+  "$ME [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [sql] [args]\n";
 our $FULL_USAGE = $USAGE . <<'EndUsage';
     -h, --help      display this help text and exit
     -H, --hostname  connect to this hostname (default localhost)
     -u, --username  connect as this username (default your Unix username)
     -p, --password  connect with this password (default is to prompt)
+    -d, --database  start connected to a specific database
+    -c, --charset   must be one of ASCII or UTF8
+    -m, --mode      must be one of ANSI or TERADATA
     -o, --output    write output to this file (default is write to stdout)
     -f, --format    format text, csv, vbar, box, vertical (default tab-separated text)
     -r, --header    include a header row with text, csv, or vbar output
@@ -241,8 +260,7 @@ our $FULL_USAGE = $USAGE . <<'EndUsage';
 EndUsage
 
 # Globals which can be influenced by the user
-our($OPTIONS, $HOSTNAME, $USERNAME, $PASSWORD, $OUTPUT, $FORMAT, $HEADER, $SQL, @ARGS);
-$OPTIONS  = '';  # TODO: 'CHARSET=UTF8';
+our($HOSTNAME, $USERNAME, $PASSWORD, $DATABASE, $CHARSET, $MODE, $OUTPUT, $FORMAT, $HEADER, $SQL, @ARGS);
 $HOSTNAME = 'localhost';
 $USERNAME = getpwuid($>);
 $FORMAT   = undef;
@@ -270,6 +288,9 @@ if(has_value($ENV{HOME})) {
         $HOSTNAME = $config{hostname} if has_value($config{hostname});
         $USERNAME = $config{username} if has_value($config{username});
         $PASSWORD = $config{password} if has_value($config{password});
+        $DATABASE = $config{database} if has_value($config{database});
+        $CHARSET  = $config{charset}  if has_value($config{charset});
+        $MODE     = $config{mode}     if has_value($config{mode});
     }
 }
 
@@ -290,6 +311,9 @@ if(has_value($ENV{HOME})) {
        'H|hostname=s' => \$HOSTNAME,
        'u|username=s' => \$USERNAME,
        'p|password=s' => \$PASSWORD,
+       'd|database=s' => \$DATABASE,
+       'c|charset=s'  => \$CHARSET,
+       'm|mode=s'     => \$MODE,
        'o|output=s'   => \$OUTPUT,
        'f|format=s'   => \$FORMAT,
        'r|header'     => \$HEADER,
@@ -312,6 +336,15 @@ unless(has_value($FORMAT)) {
 unless($FORMAT =~ /^(?:text|csv|vbar|box|vertical)$/) {
     die "$ME: invalid format (must be text, csv, vbar, box, or vertical): $FORMAT\n";
 }
+
+if(has_value($CHARSET) && $CHARSET !~ /^(?:ASCII|UTF8)$/) {
+    die "$ME: invalid charset (must be ASCII or UTF8): $CHARSET\n";
+}
+
+if(has_value($MODE) && $MODE !~ /^(?:ANSI|TERADATA)$/) {
+    die "$ME: invalid mode (must be ANSI or TERADATA): $MODE\n";
+}
+
 if($HEADER) {
     if($FORMAT eq 'text') {
         $FORMAT = 'htext';
@@ -369,7 +402,9 @@ if($SQL) {
     my $ps2 = (' ' x (length($ME) - 1)) . '-> ';
     my $history_lines = 0;
     my $command;
-    while(defined($command = $term->readline($ps1))) {
+    my $preput = '';
+    while(defined($command = $term->readline($ps1, $preput))) {
+        $preput = '';
         while( $command !~ m,\A\s*/, && $command !~ m,(?:;|\\[Gg])\s*\Z, &&
                defined(my $partial = $term->readline($ps2)) )
         {
@@ -379,6 +414,19 @@ if($SQL) {
         $term->AddHistory($command);
         $history_lines++;
         $command =~ s/;\s*\Z//;
+
+        # have to put /edit parsing out here since it modifies $preput
+        if($command =~ /^\/e(?:dit)?$/i) {
+            if($term->Features->{preput}) {
+                $preput = edit_command($term);
+            } else {
+                print STDERR (
+                  "Your Term::ReadLine implementation does not ",
+                  "support preput.  Install Term::ReadLine::Gnu from CPAN.\n"
+                );
+            }
+            next;
+        }
         my $should_continue = eval { $runner->parse($command) };
         if($@ && has_value($DBI::errstr) && $@ =~ /\A\Q$DBI::errstr\E/) {
             local $_ = $DBI::errstr;
@@ -411,6 +459,23 @@ sub has_value {
     return;
 }
 
+sub edit_command {
+    my ($term) = @_;
+    my $sql_file =
+      File::Temp->new(
+        TEMPLATE => "$ME.XXXXX",
+        SUFFIX   => '.sql',
+        TMPDIR   => 1
+      );
+    print $sql_file (($term->GetHistory())[-2]);
+    close($sql_file);
+    system($ENV{VISUAL} || $ENV{EDITOR} || 'editor', $sql_file);
+    open(my $fh, '<', $sql_file);
+    my $preput;
+    chomp($preput = do { local $/; <$fh> });
+    close($fh);
+    return $preput;
+}
 
 # ========================================================================
 # Encapsulate Teradata database connection
@@ -419,11 +484,12 @@ package TDSQL;
 
 use Time::HiRes qw(gettimeofday tv_interval);
 
-use constant OPTIONS => ();
-
 sub new {
     my($class, $hostname, $username, $password, $database) = @_;
-    my $dsn = join ';', "dbi:Teradata:$HOSTNAME", OPTIONS;
+    my $dsn = "dbi:Teradata:$HOSTNAME";
+    $dsn .= ";DATABASE=$DATABASE" if ::has_value($DATABASE);
+    $dsn .= ";MODE=$MODE"         if ::has_value($MODE);
+    $dsn .= ";CHARSET=$CHARSET"   if ::has_value($CHARSET);
     my $attr = { PrintError => 0, RaiseError => 0 };
     my $self = {
         dbh      => undef,
@@ -541,6 +607,7 @@ List of tdsql interactive mode commands:
     /close            close any current output file, direct output to stdout
     /format [format]  show or set format (text, csv, vbar, box, vertical; default box)
     /cheatsheet       view a cheatsheet of common commands
+    /edit             edit the most recent command in your editor
     /exit             exit tdsql interactive mode
 EndHelp
 
@@ -777,7 +844,12 @@ sub output {
     my($self, $row) = @_;
     my $maxlen = $self->{maxlen};
     foreach my $i (0 .. $#$row) {
-        my $len = defined($row->[$i]) ? length($row->[$i]) : 0;
+        my $len = 0;
+        if (defined $row->[$i]) {
+            # normalize to unix newlines
+            $row->[$i] =~ s/\r\n?/\n/g;
+            $len = length($row->[$i]);
+        }
         if(!defined($maxlen->[$i]) || $len > $maxlen->[$i]) {
             $maxlen->[$i] = $len;
         }
