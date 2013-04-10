@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "TDSQL 1"
-.TH TDSQL 1 "2013-03-21" "perl v5.12.3" "User Contributed Perl Documentation"
+.TH TDSQL 1 "2013-04-09" "perl v5.12.3" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -188,14 +188,15 @@ Write output to this file (default is to write to stdout).
 .el .IP "\f(CW\-f\fR \fIformat\fR, \f(CW\-\-format=\fR\fIformat\fR" 4
 .IX Item "-f format, --format=format"
 Write output in \f(CW\*(C`text\*(C'\fR (tab-separated, the default), \f(CW\*(C`csv\*(C'\fR
-(comma-separated), \f(CW\*(C`box\*(C'\fR pretty-printed boxed format (this is the
-slowest output format, as all output must be buffered before any output
-is printed), or \f(CW\*(C`vertical\*(C'\fR for vertical rows (like MySQL with \eG).
+(comma-separated), \f(CW\*(C`vbar\*(C'\fR (pipe-separated), \f(CW\*(C`box\*(C'\fR pretty-printed
+boxed format (this is the slowest output format, as all output must be
+buffered before any output is printed), or \f(CW\*(C`vertical\*(C'\fR for vertical
+rows (like MySQL with \eG).
 .ie n .IP """\-r"", ""\-\-header""" 4
 .el .IP "\f(CW\-r\fR, \f(CW\-\-header\fR" 4
 .IX Item "-r, --header"
-Include a header row with text or csv output. If a format other than
-text or csv is specified, the header argument is ignored.
+Include a header row with text, csv, or vbar output. If a format other
+than text, csv, or vbar is specified, the header argument is ignored.
 .PP
 The last optional command line arguments are the \s-1SQL\s0 to run, as a single
 string; and any arguments to pass to the \s-1SQL\s0, if the \s-1SQL\s0 contains

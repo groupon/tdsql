@@ -61,14 +61,15 @@ Write output to this file (default is to write to stdout).
 =item C<-f> I<format>, C<--format=>I<format>
 
 Write output in C<text> (tab-separated, the default), C<csv>
-(comma-separated), C<box> pretty-printed boxed format (this is the
-slowest output format, as all output must be buffered before any output
-is printed), or C<vertical> for vertical rows (like MySQL with \G).
+(comma-separated), C<vbar> (pipe-separated), C<box> pretty-printed
+boxed format (this is the slowest output format, as all output must be
+buffered before any output is printed), or C<vertical> for vertical
+rows (like MySQL with \G).
 
 =item C<-r>, C<--header>
 
-Include a header row with text or csv output. If a format other than
-text or csv is specified, the header argument is ignored. 
+Include a header row with text, csv, or vbar output. If a format other
+than text, csv, or vbar is specified, the header argument is ignored.
 
 =back
 

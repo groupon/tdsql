@@ -64,14 +64,15 @@ Write output to this file (default is to write to stdout).
 =item C<-f> I<format>, C<--format=>I<format>
 
 Write output in C<text> (tab-separated, the default), C<csv>
-(comma-separated), C<box> pretty-printed boxed format (this is the
-slowest output format, as all output must be buffered before any output
-is printed), or C<vertical> for vertical rows (like MySQL with \G).
+(comma-separated), C<vbar> (pipe-separated), C<box> pretty-printed
+boxed format (this is the slowest output format, as all output must be
+buffered before any output is printed), or C<vertical> for vertical
+rows (like MySQL with \G).
 
 =item C<-r>, C<--header>
 
-Include a header row with text or csv output. If a format other than
-text or csv is specified, the header argument is ignored. 
+Include a header row with text, csv, or vbar output. If a format other
+than text, csv, or vbar is specified, the header argument is ignored.
 
 =back
 
@@ -252,8 +253,8 @@ our $FULL_USAGE = $USAGE . <<'EndUsage';
     -c, --charset   must be one of ASCII or UTF8
     -m, --mode      must be one of ANSI or TERADATA
     -o, --output    write output to this file (default is write to stdout)
-    -f, --format    format text, csv, box, vertical (default tab-separated text)
-    -r, --header    include a header row with text or csv output
+    -f, --format    format text, csv, vbar, box, vertical (default tab-separated text)
+    -r, --header    include a header row with text, csv, or vbar output
     sql             the SQL to run (default is to read from stdin)
     args            if placeholders are used in SQL, the arguments to pass
 EndUsage
@@ -332,8 +333,8 @@ unless(has_value($FORMAT)) {
         $FORMAT = 'box';
     }
 }
-unless($FORMAT =~ /^(?:text|csv|box|vertical)$/) {
-    die "$ME: invalid format (must be text, csv, box, or vertical): $FORMAT\n";
+unless($FORMAT =~ /^(?:text|csv|vbar|box|vertical)$/) {
+    die "$ME: invalid format (must be text, csv, vbar, box, or vertical): $FORMAT\n";
 }
 
 if(has_value($CHARSET) && $CHARSET !~ /^(?:ASCII|UTF8)$/) {
@@ -349,6 +350,8 @@ if($HEADER) {
         $FORMAT = 'htext';
     } elsif ($FORMAT eq 'csv') {
         $FORMAT = 'hcsv';
+    } elsif ($FORMAT eq 'vbar') {
+        $FORMAT = 'hvbar';
     }
 }
 
@@ -602,7 +605,7 @@ List of tdsql interactive mode commands:
     /help             display this help text
     /output [file]    show or set the output file (default stdout)
     /close            close any current output file, direct output to stdout
-    /format [format]  show or set format (text, csv, box, vertical; default box)
+    /format [format]  show or set format (text, csv, vbar, box, vertical; default box)
     /cheatsheet       view a cheatsheet of common commands
     /edit             edit the most recent command in your editor
     /exit             exit tdsql interactive mode
@@ -720,7 +723,7 @@ use Carp qw(confess);
 sub new {
     my($class, $filename, $format) = @_;
     my $self = {};
-    if($format =~ /^(?:text|csv|htext|hcsv|box|vertical)$/) {
+    if($format =~ /^(?:text|csv|vbar|htext|hcsv|hvbar|box|vertical)$/) {
         bless $self, 'TDSQL::Outputter::' . $format;
     } else {
         confess("unknown output format: $format");
@@ -740,7 +743,7 @@ sub new {
 
 sub can_format {
     my($class, $format) = @_;
-    return 1 if $format && $format =~ /^(?:text|csv|htext|hcsv|box|vertical)/;
+    return 1 if $format && $format =~ /^(?:text|csv|vbar|htext|hcsv|hvbar|box|vertical)/;
     return;
 }
 
@@ -795,7 +798,7 @@ sub output {
 }
 
 
-# Subclasses handle tab-separated (text) and comma-separated (csv) output
+# Subclasses handle tab-separated (text), comma-separated (csv), and vbar-separated (pipe) output
 
 package TDSQL::Outputter::text;
 use base qw(TDSQL::Outputter::delimited);
@@ -805,6 +808,10 @@ package TDSQL::Outputter::csv;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { ',' }
 
+package TDSQL::Outputter::vbar;
+use base qw(TDSQL::Outputter::delimited);
+sub delimiter { '|' }
+
 package TDSQL::Outputter::htext;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { "\t" }
@@ -813,7 +820,12 @@ sub header { 1 }
 package TDSQL::Outputter::hcsv;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { ',' }
-sub header { 1 } 
+sub header { 1 }
+
+package TDSQL::Outputter::hvbar;
+use base qw(TDSQL::Outputter::delimited);
+sub delimiter { '|' }
+sub header { 1 }
 
 # ------------------------------------------------------------------------
 # Pretty-printed box outputter class
