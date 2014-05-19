@@ -611,6 +611,7 @@ List of tdsql interactive mode commands:
     /output [file]    show or set the output file (default stdout)
     /close            close any current output file, direct output to stdout
     /format [format]  show or set format (text, csv, vbar, box, vertical; default box)
+    /header [on|off]  turn on outputting headers
     /cheatsheet       view a cheatsheet of common commands
     /edit             edit the most recent command in your editor
     /exit             exit tdsql interactive mode
@@ -691,6 +692,28 @@ sub parse {
             } else {
                 my $format = $db->format;
                 print STDERR "Output format is currently set to $format.\n";
+            }
+        } elsif($verb =~ /^headers?/) {
+            if(@args && has_value($args[0])) {
+                my $switch = lc shift @args;
+                my $format = $db->format;
+                if($switch eq 'on') {
+                    $format = 'h' . $format;
+                } elsif($switch eq 'off') {
+                    $format =~ s/^h//;
+                }
+                if($format ne $db->format && TDSQL::Outputter->can_format($format)) {
+                    print STDERR "Setting format to: $format\n";
+                    $db->format($format);
+                } else {
+                    print STDERR "Error: cannot turn headers $switch for " . $db->format . "\n";
+                }
+            } else {
+                if($db->format =~ /^h/) {
+                    print STDERR "Headers are on.\n";
+                } else {
+                    print STDERR "Headers are off.\n";
+                }
             }
         } elsif($verb eq 'cheatsheet') {
             print STDERR CHEATSHEET;
