@@ -1,7 +1,7 @@
 # Makefile - create man page and GitHub compatible README.pod from bin/tdsql
 # Andrew Ho (ho@groupon.com)
 #
-# Copyright (c) 2012, Groupon, Inc.
+# Copyright (c) 2012-2014, Groupon, Inc.
 # All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
