@@ -304,13 +304,13 @@ if(has_value($ENV{HOME})) {
         chomp $errmsg;
         die "$ME: argument parsing error: $errmsg\n$USAGE";
     };
-    my $help;
+    my($help, $password);
     Getopt::Long::Configure('no_ignore_case');
     GetOptions(
        'h|help'       => \$help,
        'H|hostname=s' => \$HOSTNAME,
        'u|username=s' => \$USERNAME,
-       'p|password=s' => \$PASSWORD,
+       'p|password=s' => \$password,
        'd|database=s' => \$DATABASE,
        'c|charset=s'  => \$CHARSET,
        'm|mode=s'     => \$MODE,
@@ -321,6 +321,10 @@ if(has_value($ENV{HOME})) {
     if($help) {
         print $FULL_USAGE;
         exit 0;
+    }
+    if(defined($password) && $password ne '') {
+        $PASSWORD = $password;
+        $0 = "$0 <hidden>";  # Attempt to hide password from command line
     }
 }
 ($SQL, @ARGS) = @ARGV;
