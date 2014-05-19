@@ -324,7 +324,7 @@ if(has_value($ENV{HOME})) {
     }
     if(defined($password) && $password ne '') {
         $PASSWORD = $password;
-        $0 = "$0 <arguments>";  # Attempt to hide password from command line
+        $0 = "$0 <hidden>";  # Attempt to hide password from command line
     }
 }
 ($SQL, @ARGS) = @ARGV;
