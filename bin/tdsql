@@ -409,7 +409,7 @@ if($SQL) {
     my $preput = '';
     while(defined($command = $term->readline($ps1, $preput))) {
         $preput = '';
-        while( $command !~ m,\A\s*/, && $command !~ m,(?:;|\\[Gg])\s*\Z, &&
+        while( $command !~ m,\A\s*/, && $command !~ m,(?:;|\\[GgEe])\s*\Z, &&
                defined(my $partial = $term->readline($ps2)) )
         {
             $command .= ' ' unless $partial =~ /\A\s/;
@@ -420,9 +420,10 @@ if($SQL) {
         $command =~ s/;\s*\Z//;
 
         # have to put /edit parsing out here since it modifies $preput
-        if($command =~ /^\/e(?:dit)?$/i) {
+        if($command =~ /^\/e(?:dit)?$|(.*)(\\e)\s*$/is) {
+            my $sql = $2 ? $1 : ($term->GetHistory())[-2];
             if($term->Features->{preput}) {
-                $preput = edit_command($term);
+                $preput = edit_command($sql);
             } else {
                 print STDERR (
                   "Your Term::ReadLine implementation does not ",
@@ -464,14 +465,14 @@ sub has_value {
 }
 
 sub edit_command {
-    my ($term) = @_;
+    my ($sql) = @_;
     my $sql_file =
       File::Temp->new(
         TEMPLATE => "$ME.XXXXX",
         SUFFIX   => '.sql',
         TMPDIR   => 1
       );
-    print $sql_file (($term->GetHistory())[-2]);
+    print $sql_file ($sql);
     close($sql_file);
     system($ENV{VISUAL} || $ENV{EDITOR} || 'editor', $sql_file);
     open(my $fh, '<', $sql_file);
@@ -635,6 +636,7 @@ Switch to a database:
 Example queries:
     select top [count] * from <table>;  /* limit number of results returned */
     select * from <table> \G;           /* show results in column format    */
+    select * from <table>; \E           /* edit current commandline         */
 
 Optimizing queries:
     explain <sql>;
