@@ -233,6 +233,7 @@ use File::Basename qw(basename);
 use Getopt::Long qw(GetOptions);
 use Term::ReadKey qw(ReadMode ReadLine);
 use Term::ReadLine ();
+use POSIX qw(sigaction SIGINT SIG_DFL);
 use DBI ();
 use Text::CSV_XS ();
 use File::Temp;
@@ -407,7 +408,24 @@ if($SQL) {
     my $history_lines = 0;
     my $command;
     my $preput = '';
-    while(defined($command = $term->readline($ps1, $preput))) {
+    my $readline = sub {
+        my $interrupted;
+        do {
+            $interrupted = 0;
+            sigaction SIGINT, POSIX::SigAction->new(sub { die 'SIGINT' });
+            $command = eval { $term->readline($ps1, $preput) };
+            my $caught_error = $@;
+            sigaction SIGINT, POSIX::SigAction->new('DEFAULT');
+            if($caught_error && $caught_error =~ /^SIGINT\b/) {
+                print STDERR "\n";
+                $interrupted = 1;
+            } elsif($caught_error) {
+                die $caught_error;
+            }
+        } while($interrupted);
+        return $command;
+    };
+    while(defined($readline->())) {
         $preput = '';
         while( $command !~ m,\A\s*/, && $command !~ m,(?:;|\\[GgEe])\s*\Z, &&
                defined(my $partial = $term->readline($ps2)) )
