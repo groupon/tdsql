@@ -414,10 +414,13 @@ if($SQL) {
             $interrupted = 0;
             sigaction SIGINT, POSIX::SigAction->new(sub { die 'SIGINT' });
             $command = eval { $term->readline($ps1, $preput) };
+            my $caught_error = $@;
             sigaction SIGINT, POSIX::SigAction->new('DEFAULT');
-            if($@ && $@ =~ /^SIGINT\b/) {
+            if($caught_error && $caught_error =~ /^SIGINT\b/) {
                 print STDERR "\n";
                 $interrupted = 1;
+            } elsif($caught_error) {
+                die $caught_error;
             }
         } while($interrupted);
         return $command;
