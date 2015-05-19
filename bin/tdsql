@@ -826,6 +826,7 @@ sub start {
     my($self, $header_row) = @_;
     $self->{csv} = Text::CSV_XS->new( {
         sep_char            => $self->delimiter,
+        quote_char          => $self->quote,
         eol                 => "\n",
         binary              => 1,
         quote_space         => 0,
@@ -844,34 +845,39 @@ sub output {
     $self->{csv}->print($self->{fh}, $row);
 }
 
+sub quote { undef }
 
 # Subclasses handle tab-separated (text), comma-separated (csv), and vbar-separated (pipe) output
 
 package TDSQL::Outputter::text;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { "\t" }
+sub output {
+    my ($self, $row) = @_;
+    # Text::CSV doesn't escape/strip tabs in TSV mode; we need to
+    my @safe_row = map { my $c = $_; $c =~ s/\t/ /g if defined $c; $c } @$row;
+    $self->SUPER::output(\@safe_row);
+}
 
 package TDSQL::Outputter::csv;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { ',' }
+sub quote { '"' }
 
 package TDSQL::Outputter::vbar;
 use base qw(TDSQL::Outputter::delimited);
 sub delimiter { '|' }
 
 package TDSQL::Outputter::htext;
-use base qw(TDSQL::Outputter::delimited);
-sub delimiter { "\t" }
+use base qw(TDSQL::Outputter::text);
 sub header { 1 }
 
 package TDSQL::Outputter::hcsv;
-use base qw(TDSQL::Outputter::delimited);
-sub delimiter { ',' }
+use base qw(TDSQL::Outputter::csv);
 sub header { 1 }
 
 package TDSQL::Outputter::hvbar;
-use base qw(TDSQL::Outputter::delimited);
-sub delimiter { '|' }
+use base qw(TDSQL::Outputter::vbar);
 sub header { 1 }
 
 # ------------------------------------------------------------------------
