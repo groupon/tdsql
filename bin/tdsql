@@ -389,7 +389,7 @@ my $db = TDSQL->new($HOSTNAME, $USERNAME, $PASSWORD);
    $db->output($OUTPUT) if has_value($OUTPUT);
    $db->format($FORMAT) if has_value($FORMAT);
 if($SQL) {
-    eval { $db->run_query($SQL) };
+    eval { $db->run_query($SQL, @ARGS) };
     if(my $errstr = $@) {
         $db->finish;
         chomp $errstr;
@@ -576,7 +576,7 @@ sub run_query {
     my $output = $self->{output};
     my $format = $self->{format} || 'text';
     my $out = TDSQL::Outputter::text->new($output, $format);
-    $sth->execute(@ARGS) || die $DBI::errstr;
+    $sth->execute(@args) || die $DBI::errstr;
     my $started = 0;
     while(my $row = $sth->fetchrow_arrayref) {
         unless($started) {
