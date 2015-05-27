@@ -237,6 +237,7 @@ use POSIX qw(sigaction SIGINT SIG_DFL);
 use DBI ();
 use Text::CSV_XS ();
 use File::Temp;
+use YAML;
 
 use warnings;
 use strict;
@@ -273,19 +274,9 @@ $HEADER   = undef;
 if(has_value($ENV{HOME})) {
     my $rcfile = "$ENV{HOME}/.${ME}rc";
     if(-f $rcfile) {
-        open my $fh, '<', $rcfile or die "$ME: could not open $rcfile: $!\n";
-        my %config;
-        while(<$fh>) {
-            s/^\s+//;
-            s/\s+$//;
-            next if /^$/ || /^#/;
-            if(/^(\w+)\s*:\s*(.+)$/) {
-                $config{$1} = $2;
-            } else {
-                die "$ME: invalid format on line $. of $rcfile: $_\n";
-            }
-        }
-        close $fh;
+        my $cfgref = eval { YAML::LoadFile($rcfile) };
+        die "$ME: could not load $rcfile: $@\n" if $@;
+        my %config = %$cfgref;
         $HOSTNAME = $config{hostname} if has_value($config{hostname});
         $USERNAME = $config{username} if has_value($config{username});
         $PASSWORD = $config{password} if has_value($config{password});
@@ -401,8 +392,21 @@ if($SQL) {
        $term->MinLine(undef);
     my $history_file;
        $history_file = "$ENV{HOME}/.${ME}_history" if has_value($ENV{HOME});
-    $term->ReadHistory($history_file) if $term->can('ReadHistory') &&
-        has_value($history_file) && -f $history_file;
+    if(has_value($history_file) && -f $history_file) {
+        open(my $fh, '<', $history_file);
+        my $line1 = <$fh>;
+        close($fh);
+        if(defined($line1) && $line1 =~ /^---\s*$/) {
+            my $cmds = eval { YAML::LoadFile($history_file) };
+            if($@) {
+                warn "$ME: error loading YAML $history_file: $@\n";
+            } else {
+                $term->AddHistory($_) for @$cmds;
+            }
+        } elsif($term->can('ReadHistory')) {
+            $term->ReadHistory($history_file);
+        }
+    }
     my $ps1 = "$ME> ";
     my $ps2 = (' ' x (length($ME) - 1)) . '-> ';
     my $history_lines = 0;
@@ -433,13 +437,10 @@ if($SQL) {
             $command .= ' ' unless $partial =~ /\A\s/;
             $command .= $partial;
         }
-        $term->AddHistory($command);
-        $history_lines++;
-        $command =~ s/;\s*\Z//;
 
         # have to put /edit parsing out here since it modifies $preput
         if($command =~ /^\/e(?:dit)?$|(.*)(\\e)\s*$/is) {
-            my $sql = $2 ? $1 : ($term->GetHistory())[-2];
+            my $sql = $2 ? $1 : ($term->GetHistory())[-1];
             if($term->Features->{preput}) {
                 $preput = edit_command($sql);
             } else {
@@ -450,6 +451,11 @@ if($SQL) {
             }
             next;
         }
+
+        $term->AddHistory($command);
+        $history_lines++;
+        $command =~ s/;\s*\Z//;
+
         my $should_continue = eval { $runner->parse($command) };
         if($@ && has_value($DBI::errstr) && $@ =~ /\A\Q$DBI::errstr\E/) {
             local $_ = $DBI::errstr;
@@ -465,8 +471,11 @@ if($SQL) {
         last unless $should_continue;
     }
     print STDERR "\n" if !defined($command);
-    $term->WriteHistory($history_file) if $term->can('WriteHistory') &&
-        has_value($history_file);
+    if(has_value($history_file)) {
+        # implement our own WriteHistory() using YAML
+        eval { YAML::DumpFile($history_file, [ $term->GetHistory() ]) };
+        warn "$ME: couldn't write YAML $history_file: $@\n" if $@;
+    }
 }
 $db->finish;
 
