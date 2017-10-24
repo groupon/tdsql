@@ -389,11 +389,23 @@ my $db = TDSQL->new($HOSTNAME, $USERNAME, $PASSWORD);
    $db->output($OUTPUT) if has_value($OUTPUT);
    $db->format($FORMAT) if has_value($FORMAT);
 if($SQL) {
-    eval { $db->run_query($SQL, @ARGS) };
-    if(my $errstr = $@) {
-        $db->finish;
-        chomp $errstr;
-        die "$ME: $errstr\n";
+    my $counter = 1 ;
+    my @sql_statements = split(/;/,$SQL);
+    foreach my $statement(@sql_statements) {
+      $statement =~ s/^\s*//g;
+      $statement =~ s/\s*$//g;
+      if($statement ne "") {
+        # would like to have this output but it is being added
+        # to the output file if you to tdsql < file.sql > file.txt
+        # print STDERR "$counter/$#sql_statements ";
+        eval { $db->run_query($statement, @ARGS) };
+        if(my $errstr = $@) {
+          $db->finish;
+          chomp $errstr;
+          die "$ME: $errstr\n";
+        }
+      }
+      $counter++;
     }
 } else {
     my $runner = TDSQL::Runner->new($db);
