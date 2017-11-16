@@ -244,7 +244,7 @@ use strict;
 # Our name and usage message, for error reporting and command line help
 our $ME = basename $0;
 our $USAGE =
-  "$ME [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [sql] [args]\n";
+  "$ME [-h] [-H host] [-u user] [-p pass] [-d database] [-c charset] [-m mode] [-o file] [-f format] [-r] [-s statement_delimiter] [sql] [args]\n";
 our $FULL_USAGE = $USAGE . <<'EndUsage';
     -h, --help      display this help text and exit
     -H, --hostname  connect to this hostname (default localhost)
@@ -253,6 +253,8 @@ our $FULL_USAGE = $USAGE . <<'EndUsage';
     -d, --database  start connected to a specific database
     -c, --charset   must be one of ASCII or UTF8
     -m, --mode      must be one of ANSI or TERADATA
+    -s, --statement_delimiter delimiter between individual sql statements, typically ;
+    -i, --ignore_drop_table_error if error thrown on a drop table statement, ignore and keep going ;
     -o, --output    write output to this file (default is write to stdout)
     -f, --format    format text, csv, vbar, box, vertical (default tab-separated text)
     -r, --header    include a header row with text, csv, or vbar output
@@ -261,11 +263,12 @@ our $FULL_USAGE = $USAGE . <<'EndUsage';
 EndUsage
 
 # Globals which can be influenced by the user
-our($HOSTNAME, $USERNAME, $PASSWORD, $DATABASE, $CHARSET, $MODE, $OUTPUT, $FORMAT, $HEADER, $SQL, @ARGS);
-$HOSTNAME = 'localhost';
-$USERNAME = getpwuid($>);
-$FORMAT   = undef;
-$HEADER   = undef;
+our($HOSTNAME, $USERNAME, $PASSWORD, $DATABASE, $CHARSET, $MODE, $OUTPUT, $FORMAT, $HEADER, $DELIMITER, $IGNORE_DROP, $SQL, @ARGS);
+$HOSTNAME    = 'localhost';
+$USERNAME    = getpwuid($>);
+$FORMAT      = undef;
+$HEADER      = undef;
+$IGNORE_DROP = undef;
 
 # ------------------------------------------------------------------------
 # Parse ~/.tdsqlrc, if it exists, and use it to set default values
@@ -292,6 +295,7 @@ if(has_value($ENV{HOME})) {
         $DATABASE = $config{database} if has_value($config{database});
         $CHARSET  = $config{charset}  if has_value($config{charset});
         $MODE     = $config{mode}     if has_value($config{mode});
+        $DELIMITER= $config{statement_delimiter} if has_value($config{statement_delimiter});
     }
 }
 
@@ -318,6 +322,8 @@ if(has_value($ENV{HOME})) {
        'o|output=s'   => \$OUTPUT,
        'f|format=s'   => \$FORMAT,
        'r|header'     => \$HEADER,
+       'i|ignore_drop_table_errors' => \$IGNORE_DROP,
+       's|statement_delimiter=s' => \$DELIMITER,
     );
     if($help) {
         print $FULL_USAGE;
@@ -389,11 +395,21 @@ my $db = TDSQL->new($HOSTNAME, $USERNAME, $PASSWORD);
    $db->output($OUTPUT) if has_value($OUTPUT);
    $db->format($FORMAT) if has_value($FORMAT);
 if($SQL) {
-    eval { $db->run_query($SQL, @ARGS) };
-    if(my $errstr = $@) {
-        $db->finish;
-        chomp $errstr;
-        die "$ME: $errstr\n";
+    my @sql_statements = ( $SQL );
+    if($DELIMITER) { 
+       @sql_statements = split(/$DELIMITER/,$SQL);
+    }
+    foreach my $statement(@sql_statements) {
+      $statement =~ s/^\s*//g;
+      $statement =~ s/\s*$//g;
+      if($statement ne "") {
+        eval { $db->run_query($statement, @ARGS) };
+        if(my $errstr = $@) {
+          $db->finish;
+          chomp $errstr;
+          die "$ME: $errstr\n";
+        }
+      }
     }
 } else {
     my $runner = TDSQL::Runner->new($db);
@@ -559,6 +575,10 @@ sub format {
 
 sub run_query {
     my($self, $sql, @args) = @_;
+    my $drop_table_statement = 0 ;
+    if( index($sql, "drop table ") == 0 ) {
+      $drop_table_statement = 1 ;
+    }
 
     # Keep track of row count and start time, for human output
     my $rows = 0;
@@ -576,7 +596,13 @@ sub run_query {
     my $output = $self->{output};
     my $format = $self->{format} || 'text';
     my $out = TDSQL::Outputter::text->new($output, $format);
-    $sth->execute(@args) || die $DBI::errstr;
+
+    if( $drop_table_statement && $IGNORE_DROP ) { 
+      $sth->execute(@args) || print "ignoring error on drop table: $DBI::errstr;\n" ; 
+    }
+    else {
+      $sth->execute(@args) || die $DBI::errstr;
+    }
     my $started = 0;
     while(my $row = $sth->fetchrow_arrayref) {
         unless($started) {
@@ -592,7 +618,7 @@ sub run_query {
     # Show human row count and elapsed time to stderr
     if(-t STDERR) {
         my $elapsed = sprintf '%0.1f', tv_interval($begin);
-        printf STDERR "Returned %s row%s in %s second%s\n",
+        printf STDERR "returned %s row%s in %s second%s\n",
             commify($rows), $rows == 1 ? '' : 's',
             $elapsed, $elapsed eq '1.0' ? '' : 's';
     }
